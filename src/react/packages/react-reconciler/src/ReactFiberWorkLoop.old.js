@@ -1829,31 +1829,30 @@ function workLoopConcurrent() {
 }
 
 function performUnitOfWork(unitOfWork: Fiber): void {
-  // The current, flushed, state of this fiber is the alternate. Ideally
-  // nothing should rely on this, but relying on it here means that we don't
-  // need an additional field on the work in progress.
+  // React 使用双缓存机制，每个 Fiber 节点都有一个对应的 alternate 节点，表示上一次渲染的 Fiber 节点。如果当前是首次渲染，alternate 为 null
   const current = unitOfWork.alternate;
-  setCurrentDebugFiberInDEV(unitOfWork);
+  setCurrentDebugFiberInDEV(unitOfWork); // 在开发模式下，将当前 Fiber 节点设置为调试工具追踪的焦点（用于开发者工具或错误报告）
 
   let next;
-  if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
+  if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) { // 启用了性能分析
+    // 如果启用了性能分析，在 beginWork 执行前后记录时间，用于测量组件的渲染耗时
     startProfilerTimer(unitOfWork);
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
     stopProfilerTimerIfRunningAndRecordDelta(unitOfWork, true);
   } else {
+    // beginWork: 根据节点的类型（如函数组件、类组件、DOM 节点等）执行不同的更新逻辑，并返回下一个需要处理的子节点
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
   }
 
-  resetCurrentDebugFiberInDEV();
-  unitOfWork.memoizedProps = unitOfWork.pendingProps;
-  if (next === null) {
-    // If this doesn't spawn new work, complete the current work.
+  resetCurrentDebugFiberInDEV(); // 在开发模式下，重置调试工具追踪的 Fiber 节点
+  unitOfWork.memoizedProps = unitOfWork.pendingProps; // 将 pendingProps（本次渲染的新 props）赋值给 memoizedProps，表示该节点的 props 已更新
+  if (next === null) { // 该节点没有子节点，可以进入“完成阶段”
     completeUnitOfWork(unitOfWork);
-  } else {
+  } else { // 该节点有子节点需要继续处理
     workInProgress = next;
   }
 
-  ReactCurrentOwner.current = null;
+  ReactCurrentOwner.current = null; // React 内部用于追踪当前正在处理的组件（如确定 this 的指向）。此处重置为 null，表示当前没有活动的组件上下文
 }
 
 function completeUnitOfWork(unitOfWork: Fiber): void {

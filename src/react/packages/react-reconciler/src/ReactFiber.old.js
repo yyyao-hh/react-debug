@@ -128,30 +128,34 @@ function FiberNode(
   this.type = null;
   this.stateNode = null;
 
-  // Fiber
-  this.return = null;
-  this.child = null;
-  this.sibling = null;
-  this.index = 0;
+  // Fiber 结构
+  this.return = null;  // 指向父节点
+  this.child = null;   // 指向第一个子节点
+  this.sibling = null; // 指向兄弟节点
+  this.index = 0;      // 在父节点的所有子节点中的索引
 
-  this.ref = null;
+  this.ref = null; // 保存 ref 属性对象
 
-  this.pendingProps = pendingProps;
-  this.memoizedProps = null;
-  this.updateQueue = null;
-  this.memoizedState = null;
-  this.dependencies = null;
+  this.pendingProps = pendingProps; // 新的 props 对象
+  this.memoizedProps = null;        // 现有 props 对象
+  this.updateQueue = null;          // 保存更新对象的队列
+  this.memoizedState = null;        // 现有的 state 对象
+  this.dependencies = null;         // 依赖对象
 
   this.mode = mode;
 
   // Effects
-  this.flags = NoFlags;
-  this.subtreeFlags = NoFlags;
-  this.deletions = null;
+  this.flags = NoFlags;        // effect 的 Flag，表明当前的 effect 是 `替换`/ `更新` / `删除` 等操作
+  this.subtreeFlags = NoFlags; // 子树的 Flag 合集
+  this.deletions = null;       // 需要删除的 fiber 节点
 
+  // 更新渲染调度优先级相关 (定义: react/packages/react-reconciler/src/ReactFiberLane.old.js)
   this.lanes = NoLanes;
   this.childLanes = NoLanes;
 
+  // current 树和 workInprogress 树之间的相互引用
+  // current: 当前的 Fiber 树
+  // workInprogress: 正在更新的 Fiber 树
   this.alternate = null;
 
   if (enableProfilerTimer) {

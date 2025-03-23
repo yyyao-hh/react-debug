@@ -86,11 +86,12 @@ type DispatchEntry = {|
 export type DispatchQueue = Array<DispatchEntry>;
 
 // TODO: remove top-level side effect.
-SimpleEventPlugin.registerEvents();
-EnterLeaveEventPlugin.registerEvents();
-ChangeEventPlugin.registerEvents();
-SelectEventPlugin.registerEvents();
-BeforeInputEventPlugin.registerEvents();
+// 事件注册 (负责将浏览器原生事件转换为 react 事件，并将其分发到正确的组件中)
+SimpleEventPlugin.registerEvents();      // 简单事件，例如 onClick
+EnterLeaveEventPlugin.registerEvents();  // 鼠标进出事件，例如 onMouseEnter
+ChangeEventPlugin.registerEvents();      // 修改事件，例如 onChange
+SelectEventPlugin.registerEvents();      // 选择事件，例如 onSelect
+BeforeInputEventPlugin.registerEvents(); // 输入前事件，例如 onBeforeInput
 
 function extractEvents(
   dispatchQueue: DispatchQueue,
@@ -237,31 +238,39 @@ function processDispatchQueueItemsInOrder(
   inCapturePhase: boolean,
 ): void {
   let previousInstance;
-  if (inCapturePhase) {
-    for (let i = dispatchListeners.length - 1; i >= 0; i--) {
+  if (inCapturePhase) { // 执行捕获事件的监听函数
+    for (let i = dispatchListeners.length - 1; i >= 0; i--) { // 从最高节点向下传播，执行监听处理函数
       const {instance, currentTarget, listener} = dispatchListeners[i];
-      if (instance !== previousInstance && event.isPropagationStopped()) {
+      if (instance !== previousInstance && event.isPropagationStopped()) { // 阻止冒泡
         return;
       }
-      executeDispatch(event, listener, currentTarget);
+      executeDispatch(event, listener, currentTarget); // 执行事件监听函数，传入 Event 对象
       previousInstance = instance;
     }
-  } else {
-    for (let i = 0; i < dispatchListeners.length; i++) {
+  } else { // 执行冒泡事件的监听函数
+    for (let i = 0; i < dispatchListeners.length; i++) { // 从目标节点向上传播，执行监听处理函数
       const {instance, currentTarget, listener} = dispatchListeners[i];
-      if (instance !== previousInstance && event.isPropagationStopped()) {
+      if (instance !== previousInstance && event.isPropagationStopped()) { // 阻止冒泡
         return;
       }
-      executeDispatch(event, listener, currentTarget);
+      executeDispatch(event, listener, currentTarget); // 执行事件监听函数，传入 Event 对象
       previousInstance = instance;
     }
   }
 }
 
+/**
+ * 用于处理事件队列
+ * @param {array} dispatchQueue - 包含事件和事件监听器的数组 (每个事件监听器是一个对象，包含一个或多个事件处理函数)
+ * @param {number} eventSystemFlags - 表示事件系统的一些状态
+ */
 export function processDispatchQueue(
   dispatchQueue: DispatchQueue,
   eventSystemFlags: EventSystemFlags,
 ): void {
+	if(dispatchQueue.length) {
+		console.log(dispatchQueue, '------ dispatchQueue');
+	}
   const inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0;
   for (let i = 0; i < dispatchQueue.length; i++) {
     const {event, listeners} = dispatchQueue[i];
@@ -279,8 +288,10 @@ function dispatchEventsForPlugins(
   targetInst: null | Fiber,
   targetContainer: EventTarget,
 ): void {
+	// 找到发生事件的元素 —— 事件源
   const nativeEventTarget = getEventTarget(nativeEvent);
-  const dispatchQueue: DispatchQueue = [];
+  const dispatchQueue: DispatchQueue = []; // 待更新队列
+	// 找到待执行的事件
   extractEvents(
     dispatchQueue,
     domEventName,
@@ -290,6 +301,7 @@ function dispatchEventsForPlugins(
     eventSystemFlags,
     targetContainer,
   );
+	// 执行事件
   processDispatchQueue(dispatchQueue, eventSystemFlags);
 }
 
@@ -383,14 +395,19 @@ const listeningMarker =
     .toString(36)
     .slice(2);
 
+/**
+ * React 把所有事件都委托到这个节点上面，一旦原生事件触发之后，这个节点会根据事件类型以及优先级，触发对应 fiber 节点上的事件回调函数
+ * @param {*} rootContainerElement - 容器 DOM 节点
+ */
 export function listenToAllSupportedEvents(rootContainerElement: EventTarget) {
   if (!(rootContainerElement: any)[listeningMarker]) {
     (rootContainerElement: any)[listeningMarker] = true;
+		// allNativeEvents: 包含 81 个事件名的 Set
     allNativeEvents.forEach(domEventName => {
       // We handle selectionchange separately because it
       // doesn't bubble and needs to be on the document.
       if (domEventName !== 'selectionchange') {
-        if (!nonDelegatedEvents.has(domEventName)) {
+				if (!nonDelegatedEvents.has(domEventName)) { // 不需要进行事件委托的事件名
           listenToNativeEvent(domEventName, false, rootContainerElement);
         }
         listenToNativeEvent(domEventName, true, rootContainerElement);
@@ -418,6 +435,7 @@ function addTrappedEventListener(
   isCapturePhaseListener: boolean,
   isDeferredListenerForLegacyFBSupport?: boolean,
 ) {
+	// 绑定的回调事件
   let listener = createEventListenerWrapperWithPriority(
     targetContainer,
     domEventName,
@@ -474,6 +492,7 @@ function addTrappedEventListener(
   // TODO: There are too many combinations here. Consolidate them.
   if (isCapturePhaseListener) {
     if (isPassiveListener !== undefined) {
+			// 绑定捕获事件: passive = true
       unsubscribeListener = addEventCaptureListenerWithPassiveFlag(
         targetContainer,
         domEventName,
@@ -481,6 +500,7 @@ function addTrappedEventListener(
         isPassiveListener,
       );
     } else {
+			// 绑定捕获事件
       unsubscribeListener = addEventCaptureListener(
         targetContainer,
         domEventName,
@@ -489,6 +509,7 @@ function addTrappedEventListener(
     }
   } else {
     if (isPassiveListener !== undefined) {
+			// 绑定冒泡事件: passive = true
       unsubscribeListener = addEventBubbleListenerWithPassiveFlag(
         targetContainer,
         domEventName,
@@ -496,6 +517,7 @@ function addTrappedEventListener(
         isPassiveListener,
       );
     } else {
+			// 绑定冒泡事件
       unsubscribeListener = addEventBubbleListener(
         targetContainer,
         domEventName,
@@ -633,6 +655,7 @@ export function dispatchEventForPluginEventSystem(
     }
   }
 
+	// 批量更新的逻辑
   batchedUpdates(() =>
     dispatchEventsForPlugins(
       domEventName,

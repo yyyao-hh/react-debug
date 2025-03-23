@@ -167,18 +167,20 @@ export function createRoot(
   container: Element | Document | DocumentFragment,
   options?: CreateRootOptions,
 ): RootType {
-  if (!isValidContainer(container)) {
+  if (!isValidContainer(container)) { // 是否是合法的容器 (DOM 元素即可)
     throw new Error('createRoot(...): Target container is not a DOM element.');
   }
 
   warnIfReactDOMContainerInDEV(container);
 
+  // 初始化配置项默认值
   let isStrictMode = false;
   let concurrentUpdatesByDefaultOverride = false;
   let identifierPrefix = '';
   let onRecoverableError = defaultOnRecoverableError;
   let transitionCallbacks = null;
 
+  // 合并用户传入的参数
   if (options !== null && options !== undefined) {
     if (__DEV__) {
       if ((options: any).hydrate) {
@@ -221,6 +223,7 @@ export function createRoot(
     }
   }
 
+  // 创建容器对象 `FiberRootNode`
   const root = createContainer(
     container,
     ConcurrentRoot,
@@ -231,14 +234,18 @@ export function createRoot(
     onRecoverableError,
     transitionCallbacks,
   );
+  // 在容器 DOM 节点上添加 `__reactContainer${randomKey}` 属性, 指向Fiber HostRoot节点 (表明该 DOM 节点为当前 React 应用的容器节点 ?)
   markContainerAsRoot(root.current, container);
 
+  // 事件监听处理
   const rootContainerElement: Document | Element | DocumentFragment =
     container.nodeType === COMMENT_NODE
       ? (container.parentNode: any)
       : container;
+  // 完成了`事件委托处理`的工作
   listenToAllSupportedEvents(rootContainerElement);
 
+  // 根据容器对象 `root` 返回 `ReactDOMRoot` 对象
   return new ReactDOMRoot(root);
 }
 

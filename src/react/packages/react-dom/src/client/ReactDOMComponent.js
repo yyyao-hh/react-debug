@@ -280,6 +280,7 @@ export function trapClickOnNonInteractiveElement(node: HTMLElement) {
   node.onclick = noop;
 }
 
+// 用于设置 React 组件在初次渲染时的 DOM 元素属性
 function setInitialDOMProperties(
   tag: string,
   domElement: Element,
@@ -287,6 +288,7 @@ function setInitialDOMProperties(
   nextProps: Object,
   isCustomComponentTag: boolean,
 ): void {
+  // 遍历 props
   for (const propKey in nextProps) {
     if (!nextProps.hasOwnProperty(propKey)) {
       continue;

@@ -118,9 +118,9 @@ function registerSimpleEvent(domEventName, reactName) {
 
 export function registerSimpleEvents() {
   for (let i = 0; i < simpleEventPluginEvents.length; i++) {
-    const eventName = ((simpleEventPluginEvents[i]: any): string);
-    const domEventName = ((eventName.toLowerCase(): any): DOMEventName);
-    const capitalizedEvent = eventName[0].toUpperCase() + eventName.slice(1);
+    const eventName = ((simpleEventPluginEvents[i]: any): string);            // 数组中事件名 (touchMove)
+    const domEventName = ((eventName.toLowerCase(): any): DOMEventName);      // 全小写事件名 (touchmove)
+    const capitalizedEvent = eventName[0].toUpperCase() + eventName.slice(1); // 大驼峰事件名 (TouchMove)
     registerSimpleEvent(domEventName, 'on' + capitalizedEvent);
   }
   // Special cases where event names don't match.

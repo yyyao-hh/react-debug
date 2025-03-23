@@ -50,9 +50,9 @@ let isReRender: boolean = false;
 let didScheduleRenderPhaseUpdate: boolean = false;
 // Lazily created map of render-phase updates
 let renderPhaseUpdates: Map<UpdateQueue<any>, Update<any>> | null = null;
-// Counter to prevent infinite loops.
+// 跟踪当前组件连续渲染次数，防止无限循环
 let numberOfReRenders: number = 0;
-const RE_RENDER_LIMIT = 25;
+const RE_RENDER_LIMIT = 25; // 阈值（默认25），超过则终止执行
 
 let isInHookUserCodeInDev = false;
 
@@ -426,18 +426,28 @@ function dispatchAction<A>(
   queue: UpdateQueue<A>,
   action: A,
 ) {
-  if (numberOfReRenders >= RE_RENDER_LIMIT) {
+  if (numberOfReRenders >= RE_RENDER_LIMIT) { // 若组件在短时间内触发过多重新渲染（超过阈值），抛出错误阻止应用崩溃
     throw new Error(
       'Too many re-renders. React limits the number of renders to prevent ' +
         'an infinite loop.',
     );
   }
 
+  /**
+   * 
+   * componentIdentity: 当前组件实例的唯一标识
+   * currentlyRenderingComponent: React 正在渲染的组件实例
+   */
   if (componentIdentity === currentlyRenderingComponent) {
     // This is a render phase update. Stash it in a lazily-created map of
     // queue -> linked list of updates. After this render pass, we'll restart
     // and apply the stashed updates on top of the work-in-progress hook.
-    didScheduleRenderPhaseUpdate = true;
+    didScheduleRenderPhaseUpdate = true; // 标记渲染阶段更新，通知 React 存在待处理的更新
+    /**
+     * 创建更新对象
+     * action: 更新执行的函数
+     * next: 链表指针
+     */
     const update: Update<A> = {
       action,
       next: null,

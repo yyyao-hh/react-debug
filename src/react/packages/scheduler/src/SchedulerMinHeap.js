@@ -36,8 +36,16 @@ export function pop(heap: Heap): Node | null {
   return first;
 }
 
+/**
+ * 数据结构堆 (heap) 的操作实现
+ * @param {Array} heap - 堆的数据结构 (通常是一个数组)
+ * @param {*} node - 要上升的节点
+ * @param {number} i - 节点在堆中的当前索引
+ */
 function siftUp(heap, node, i) {
   let index = i;
+
+  // 当节点的索引大于 0 时, 继续上升, 直到到达堆的根节点
   while (index > 0) {
     const parentIndex = (index - 1) >>> 1;
     const parent = heap[parentIndex];

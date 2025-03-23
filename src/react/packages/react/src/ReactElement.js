@@ -356,38 +356,43 @@ export function jsxDEV(type, config, maybeKey, source, self) {
 }
 
 /**
- * Create and return a new ReactElement of the given type.
- * See https://reactjs.org/docs/react-api.html#createelement
+ * 创建并返回一个新的 React 元素
+ * 文档 https://zh-hans.react.dev/reference/react/createElement
+ * @param {*} type - 元素的类型 (HTML 标签 / 组件函数 / 类)
+ * @param {object|null} config - 
+ * @param {...*} children - 子元素
+ * @returns {ReactElement}
  */
 export function createElement(type, config, children) {
   let propName;
 
-  // Reserved names are extracted
-  const props = {};
+  const props = {}; // 空对象 (用于存储属性)
 
+  // 初始化 key、ref、self、source 属性
   let key = null;
   let ref = null;
   let self = null;
   let source = null;
 
-  if (config != null) {
-    if (hasValidRef(config)) {
+  if (config != null) { // 如果 config 不为空
+    if (hasValidRef(config)) { // 如果 config 包含有效的 ref 属性
       ref = config.ref;
 
-      if (__DEV__) {
+      if (__DEV__) { // 开发环境警告: 检查 ref 属性的合法性
         warnIfStringRefCannotBeAutoConverted(config);
       }
     }
-    if (hasValidKey(config)) {
-      if (__DEV__) {
+    if (hasValidKey(config)) { // 如果 config 包含有效的 key 属性
+      if (__DEV__) { // 开发环境警告: 检查 key 的类型
         checkKeyStringCoercion(config.key);
       }
-      key = '' + config.key;
+      key = '' + config.key; // 将 key 转换为字符串
     }
 
+    // 提取 self 和 source 属性 (babel 插件: babel-preset-react 注入的调试信息)
     self = config.__self === undefined ? null : config.__self;
     source = config.__source === undefined ? null : config.__source;
-    // Remaining properties are added to a new props object
+    // 去除 key、ref、__self、__source 属性, 剩余的属性被添加到新的 props 对象中
     for (propName in config) {
       if (
         hasOwnProperty.call(config, propName) &&
@@ -398,17 +403,18 @@ export function createElement(type, config, children) {
     }
   }
 
-  // Children can be more than one argument, and those are transferred onto
-  // the newly allocated props object.
+  // 处理子元素
   const childrenLength = arguments.length - 2;
+  // 1. 只有一个子元素, 直接赋值给 props.children
   if (childrenLength === 1) {
     props.children = children;
+  // 2. 有多个子元素, 将它们放到一个数组中赋值给 props.children
   } else if (childrenLength > 1) {
     const childArray = Array(childrenLength);
     for (let i = 0; i < childrenLength; i++) {
       childArray[i] = arguments[i + 2];
     }
-    if (__DEV__) {
+    if (__DEV__) { // 在开发环境中冻结子元素数组 (用于检测意外修改)
       if (Object.freeze) {
         Object.freeze(childArray);
       }
@@ -416,7 +422,7 @@ export function createElement(type, config, children) {
     props.children = childArray;
   }
 
-  // Resolve default props
+  // 处理默认属性
   if (type && type.defaultProps) {
     const defaultProps = type.defaultProps;
     for (propName in defaultProps) {
@@ -425,7 +431,7 @@ export function createElement(type, config, children) {
       }
     }
   }
-  if (__DEV__) {
+  if (__DEV__) { // 开发环境警告: 检查 key 和 ref 属性
     if (key || ref) {
       const displayName =
         typeof type === 'function'
@@ -439,14 +445,14 @@ export function createElement(type, config, children) {
       }
     }
   }
-  return ReactElement(
-    type,
-    key,
-    ref,
-    self,
-    source,
-    ReactCurrentOwner.current,
-    props,
+  return ReactElement( // 返回一个新的 ReactElement 实例
+    type,                      // 元素的类型
+    key,                       // 元素的 key 属性
+    ref,                       // 元素的 ref 属性
+    self,                      // 元素的 __self 属性
+    source,                    // 元素的 __source 属性
+    ReactCurrentOwner.current, // 当前的 React 当前拥有者 (用于调试)
+    props,                     // 元素的属性和子元素
   );
 }
 
@@ -482,6 +488,17 @@ export function cloneAndReplaceKey(oldElement, newKey) {
 /**
  * Clone and return a new ReactElement using element as the starting point.
  * See https://reactjs.org/docs/react-api.html#cloneelement
+ */
+/**
+ * 克隆并返回一个新的 React 元素，以原始元素为起点。
+ * 文档 https://reactjs.org/docs/react-api.html#cloneelement
+ *
+ * @param {ReactElement} element - 要克隆的 React 元素。必须是一个有效的 React 元素。
+ * @param {object} [config] - 用于修改克隆元素的配置对象，包括 `key`、`ref` 以及其他属性。
+ * @param {...*} [children] - 新的子元素，可以是一个或多个。
+ * @return {ReactElement} 返回一个新的 React 元素，包含修改后的属性和子元素。
+ *
+ * @throws {Error} 如果传入的 `element` 不是一个有效的 React 元素，将抛出错误。
  */
 export function cloneElement(element, config, children) {
   if (element === null || element === undefined) {
@@ -558,13 +575,12 @@ export function cloneElement(element, config, children) {
 }
 
 /**
- * Verifies the object is a ReactElement.
- * See https://reactjs.org/docs/react-api.html#isvalidelement
- * @param {?object} object
- * @return {boolean} True if `object` is a ReactElement.
- * @final
+ * 检查给定的对象是否是一个有效的 React 元素
+ * @param {?object} object - 需要检查的对象
+ * @return {boolean}
  */
 export function isValidElement(object) {
+  // React 元素具有一个特殊的内部属性 `$$typeof`, 用于区分它们与其他对象
   return (
     typeof object === 'object' &&
     object !== null &&

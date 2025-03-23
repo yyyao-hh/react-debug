@@ -3682,12 +3682,17 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
   return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
 }
 
+/** 
+ * current: 当前正在渲染的 Fiber 节点（即上一次渲染的 Fiber 节点）。如果当前是首次渲染，current 为 null
+ * workInProgress: 正在处理的 Fiber 节点（即本次渲染的 Fiber 节点）
+ * renderLanes: 表示当前渲染的优先级（Lanes 是 React 中用于表示优先位的位掩码）
+ */
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
   renderLanes: Lanes,
 ): Fiber | null {
-  if (__DEV__) {
+  if (__DEV__) { // 开发环境下, 重新创建一个新的 Fiber 节点并返回, 通常用于调试或热重载
     if (workInProgress._debugNeedsRemount && current !== null) {
       // This will restart the begin phase with a new fiber.
       return remountFiber(
@@ -3705,7 +3710,7 @@ function beginWork(
     }
   }
 
-  if (current !== null) {
+  if (current !== null) { // 表示当前节点已经渲染过, 检查是否需要更新
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
 

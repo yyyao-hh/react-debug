@@ -49,6 +49,7 @@ export type RootState = {
   transitions: Set<Transition> | null,
 };
 
+// 保存着 Fiber 根节点的信息
 function FiberRootNode(
   containerInfo,
   tag,
@@ -57,9 +58,9 @@ function FiberRootNode(
   onRecoverableError,
 ) {
   this.tag = tag;
-  this.containerInfo = containerInfo;
+  this.containerInfo = containerInfo; // Fiber 根节点的 DOM 信息
   this.pendingChildren = null;
-  this.current = null;
+  this.current = null; // 保存当前 Fiber 树
   this.pingCache = null;
   this.finishedWork = null;
   this.timeoutHandle = noTimeout;
@@ -145,6 +146,7 @@ export function createFiberRoot(
   onRecoverableError: null | ((error: mixed) => void),
   transitionCallbacks: null | TransitionTracingCallbacks,
 ): FiberRoot {
+  // 创建 FiberRootNode 对象
   const root: FiberRoot = (new FiberRootNode(
     containerInfo,
     tag,
@@ -162,13 +164,16 @@ export function createFiberRoot(
 
   // Cyclic construction. This cheats the type system right now because
   // stateNode is any.
+  // 创建 `Fiber HostRoot节点`: 就是一个 Fiber 对象，只是他的 Tag 等于 3，代表 `HostRoot`
   const uninitializedFiber = createHostRootFiber(
     tag,
     isStrictMode,
     concurrentUpdatesByDefaultOverride,
   );
-  root.current = uninitializedFiber;
-  uninitializedFiber.stateNode = root;
+  
+  // 关联 `Fiber 根结点` 和 `Fiber HostRoot节点`
+  root.current = uninitializedFiber;   // 把 `Fiber 根结点` 的 current 属性指向刚创建的 `Fiber HostRoot节点`
+  uninitializedFiber.stateNode = root; // `Fiber HostRoot节点` 的 stateNode 属性指向 `Fiber 根结点`
 
   if (enableCache) {
     const initialCache = createCache();
@@ -202,6 +207,7 @@ export function createFiberRoot(
     uninitializedFiber.memoizedState = initialState;
   }
 
+  // 初始化 `Fiber HostRoot节点` 的更新队列
   initializeUpdateQueue(uninitializedFiber);
 
   return root;

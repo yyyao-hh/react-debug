@@ -256,6 +256,7 @@ export function createContainer(
 ): OpaqueRoot {
   const hydrate = false;
   const initialChildren = null;
+  // 创建一个 FiberRootNode 对象
   return createFiberRoot(
     containerInfo,
     tag,
