@@ -1731,10 +1731,16 @@ function renderRootSync(root: FiberRoot, lanes: Lanes) {
   return workInProgressRootExitStatus;
 }
 
-// The work loop is an extremely hot path. Tell Closure not to inline it.
-/** @noinline */
+/**
+ * @noinline 注解：指示编译器不要将此函数内联。内联优化可能混淆调用栈，影响调试和 React 的调度策略。
+ * React 同步渲染模式的核心任务循环，用于不可中断地连续处理所有待更新的 Fiber 节点，直至完成整个渲染流程。
+ */
 function workLoopSync() {
-  // Already timed out, so perform work without checking if we need to yield.
+  /**
+   * 循环会持续处理 Fiber 树中的每个节点，直到所有节点完成。无中断检查，任务必须一次性完成。
+   * 1. workInProgress：指向当前正在处理的 Fiber 节点的指针。若为 null，表示所有工作单元已处理完毕。 
+   * 2. performUnitOfWork：生成子 Fiber 节点，对比新旧虚拟 DOM，标记变更，并返回下一个需要处理的子节点。
+   */
   while (workInProgress !== null) {
     performUnitOfWork(workInProgress);
   }
@@ -1820,27 +1826,52 @@ function renderRootConcurrent(root: FiberRoot, lanes: Lanes) {
   }
 }
 
-/** @noinline */
+/**
+ * @noinline 注解：指示编译器不要将此函数内联。内联优化可能混淆调用栈，影响调试和 React 的调度策略。
+ * React 并发模式的核心任务循环，用于可中断地分批次处理 Fiber 节点，在浏览器空闲时间片内逐步完成渲染，同时优先响应高优先级任务，避免主线程阻塞。
+ */
 function workLoopConcurrent() {
-  // Perform work until Scheduler asks us to yield
+  /**
+   * 循环会持续处理 Fiber 树中的每个节点，直到所有节点完成或被中断。
+   * 1. workInProgress：指向当前正在处理的 Fiber 节点的指针。若为 null，表示所有工作单元已处理完毕。 
+   * 2. shouldYield：调度器（Scheduler）提供的函数，判断是否应中断当前任务。其逻辑通常基于：
+   *  - 时间片耗尽：默认每帧分配约 5ms 执行时间，超时则让出主线程。
+   *  - 高优先级任务到达：如用户输入、动画帧更新需要立即响应。
+   * 3. performUnitOfWork：生成子 Fiber 节点，对比新旧虚拟 DOM，标记变更，并返回下一个需要处理的子节点。
+   */
   while (workInProgress !== null && !shouldYield()) {
     performUnitOfWork(workInProgress);
   }
-}
+} 
 
+/**
+ * 处理单个 Fiber 节点的更新工作，决定下一步工作单元，驱动整个 Fiber 树的深度优先遍历
+ * 
+ * @param {Fiber} unitOfWork - 当前需要处理的 Fiber 节点
+ * @returns 无返回值，通过修改全局状态（如 workInProgress）驱动任务流程
+ */
 function performUnitOfWork(unitOfWork: Fiber): void {
-  // React 使用双缓存机制，每个 Fiber 节点都有一个对应的 alternate 节点，表示上一次渲染的 Fiber 节点。如果当前是首次渲染，alternate 为 null
-  const current = unitOfWork.alternate;
-  setCurrentDebugFiberInDEV(unitOfWork); // 在开发模式下，将当前 Fiber 节点设置为调试工具追踪的焦点（用于开发者工具或错误报告）
+  const current = unitOfWork.alternate;  // alternate：表示上一次渲染的 Fiber 节点。首次渲染 alternate 为 null
+  setCurrentDebugFiberInDEV(unitOfWork); // 开发模式下，将当前 Fiber 节点设置为调试工具追踪的焦点（用于开发者工具或错误报告）
 
+  /**
+   * 1. next：下一个需要处理的子节点
+   * 2. beginWork：根据节点的类型（如函数组件、类组件、DOM 节点等）执行不同的更新逻辑，并返回下一个需要处理的子节点
+   *  - current：上一次渲染的 Fiber 节点
+   *  - unitOfWork：当前需要处理的 Fiber 节点
+   *  - subtreeRenderLanes：记录该节点及其子树的渲染优先级，用于并发模式下的优先级调度
+   */
   let next;
   if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) { // 启用了性能分析
-    // 如果启用了性能分析，在 beginWork 执行前后记录时间，用于测量组件的渲染耗时
+    /**
+     * 如果启用了新能分析，在 beginWork 执行前后记录时间，用于测量组件的渲染耗时
+     *  - startProfilerTimer：记录节点处理开始时间
+     *  - stopProfilerTimerIfRunningAndRecordDelta：计算耗时并记录到性能数据
+     */
     startProfilerTimer(unitOfWork);
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
     stopProfilerTimerIfRunningAndRecordDelta(unitOfWork, true);
   } else {
-    // beginWork: 根据节点的类型（如函数组件、类组件、DOM 节点等）执行不同的更新逻辑，并返回下一个需要处理的子节点
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
   }
 
