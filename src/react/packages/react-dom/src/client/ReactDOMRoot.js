@@ -89,26 +89,34 @@ function ReactDOMRoot(internalRoot: FiberRoot) {
   this._internalRoot = internalRoot;
 }
 
+/**
+ * 将 React 组件渲染到 DOM 容器中
+ * 
+ * @param {ReactNodeList} children - 要渲染的 React 节点列表 (通常是 JSX 组件树)
+ */
 ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function(
   children: ReactNodeList,
 ): void {
-  const root = this._internalRoot;
-  if (root === null) {
+  const root = this._internalRoot; // 获取内部根节点引用 (FiberRoot)
+  if (root === null) { // 如果根节点已被卸载(unmount), 抛出错误防止内存泄漏
     throw new Error('Cannot update an unmounted root.');
   }
 
-  if (__DEV__) {
-    if (typeof arguments[1] === 'function') {
+  if (__DEV__) { // 开发环境警告
+    if (typeof arguments[1] === 'function') { // 检测第二个参数 (旧版 API 兼容)
+      // React18 新 rootAPI 移除了 render 的回调函数
       console.error(
         'render(...): does not support the second callback argument. ' +
           'To execute a side effect after rendering, declare it in a component body with useEffect().',
       );
-    } else if (isValidContainer(arguments[1])) {
+    } else if (isValidContainer(arguments[1])) { // 检测容器重复传递
+      // 防止用户混淆 createRoot(container).render() 和旧版 ReactDOM.render(element, container)
       console.error(
         'You passed a container to the second argument of root.render(...). ' +
           "You don't need to pass it again since you already passed it to create the root.",
       );
-    } else if (typeof arguments[1] !== 'undefined') {
+    } else if (typeof arguments[1] !== 'undefined') { // 检测无效参数
+      // 禁止任何类型的第二个参数
       console.error(
         'You passed a second argument to root.render(...) but it only accepts ' +
           'one argument.',
@@ -117,7 +125,8 @@ ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = functio
 
     const container = root.containerInfo;
 
-    if (container.nodeType !== COMMENT_NODE) {
+    if (container.nodeType !== COMMENT_NODE) { // 检测 DOM 篡改 (关键安全警告)
+      // 检测 React 管理的 DOM 是否被手动移除
       const hostInstance = findHostInstanceWithNoPortals(root.current);
       if (hostInstance) {
         if (hostInstance.parentNode !== container) {
@@ -131,7 +140,7 @@ ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = functio
       }
     }
   }
-  updateContainer(children, root, null, null);
+  updateContainer(children, root, null, null); // 启动渲染流程
 };
 
 ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount = function(): void {
