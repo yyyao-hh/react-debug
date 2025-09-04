@@ -263,15 +263,21 @@ function resolveLazy(lazyType) {
 // a compiler or we can do it manually. Helpers that don't need this branching
 // live outside of this function.
 function ChildReconciler(shouldTrackSideEffects) {
+  /**
+   * 负责将一个子Fiber节点标记为待删除, 但它并不立即执行删除操作
+   * 
+   * @param {Fiber} returnFiber - 当前正在处理的父级Fiber节点
+   * @param {Fiber} childToDelete - 需要被标记为删除的子Fiber节点
+   */
   function deleteChild(returnFiber: Fiber, childToDelete: Fiber): void {
-    if (!shouldTrackSideEffects) {
+    if (!shouldTrackSideEffects) { // 是否应该追踪副作用
       // Noop.
       return;
     }
     const deletions = returnFiber.deletions;
     if (deletions === null) {
       returnFiber.deletions = [childToDelete];
-      returnFiber.flags |= ChildDeletion;
+      returnFiber.flags |= ChildDeletion; // 在父Fiber上打上“有子节点被删除”的标记
     } else {
       deletions.push(childToDelete);
     }
@@ -1126,6 +1132,14 @@ function ChildReconciler(shouldTrackSideEffects) {
     return created;
   }
 
+  /**
+   * 当一个父Fiber节点只有一个子元素时, 如何对比并复用已有的Fiber节点
+   * @param {Fiber} returnFiber - 当前正在处理的父级Fiber节点
+   * @param {Fiber | null} currentFirstChild - 父Fiber节点下当前已存在的第一个子Fiber节点(可能为null)
+   * @param {ReactElement} element - 本次渲染生成的新React Element对象
+   * @param {Lanes} lanes - 优先级相关
+   * @returns 
+   */
   function reconcileSingleElement(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,
@@ -1134,9 +1148,11 @@ function ChildReconciler(shouldTrackSideEffects) {
   ): Fiber {
     const key = element.key;
     let child = currentFirstChild;
+    // 遍历现有的子Fiber链表
     while (child !== null) {
       // TODO: If key === null and child.key === null, then this only applies to
       // the first item in the list.
+      // 检查 key 是否匹配
       if (child.key === key) {
         const elementType = element.type;
         if (elementType === REACT_FRAGMENT_TYPE) {
@@ -1181,6 +1197,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         deleteRemainingChildren(returnFiber, child);
         break;
       } else {
+        // Key不匹配, 删除这个旧的child Fiber
         deleteChild(returnFiber, child);
       }
       child = child.sibling;
@@ -1242,6 +1259,7 @@ function ChildReconciler(shouldTrackSideEffects) {
   // This API will tag the children with the side-effect of the reconciliation
   // itself. They will be added to the side-effect list as we pass through the
   // children and the parent.
+  // newChild 不是 fiber 对象, 而是 ReactElement.通过 createElement函数或者 jsx函数编译出来的
   function reconcileChildFibers(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,

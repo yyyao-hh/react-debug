@@ -24,11 +24,11 @@ export type RootType = {
 };
 
 export type CreateRootOptions = {
-  unstable_strictMode?: boolean,
-  unstable_concurrentUpdatesByDefault?: boolean,
-  identifierPrefix?: string,
-  onRecoverableError?: (error: mixed) => void,
-  transitionCallbacks?: TransitionTracingCallbacks,
+  unstable_strictMode?: boolean,                    // 是否启用严格模式 (实验性功能)
+  unstable_concurrentUpdatesByDefault?: boolean,    // 是否默认启用并发更新 (实验性功能)
+  identifierPrefix?: string,                        // 可恢复错误处理函数
+  onRecoverableError?: (error: mixed) => void,      // 服务端渲染使用的ID前缀
+  transitionCallbacks?: TransitionTracingCallbacks, // 过渡更新的回调函数对象
   ...
 };
 

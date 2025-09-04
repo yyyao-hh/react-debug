@@ -103,53 +103,80 @@ const isInputPending =
 
 const continuousOptions = {includeContinuous: enableIsInputPendingContinuous};
 
+/**
+ * 检查定时器队列(timerQueue)中已到期的任务, 并将其转移到主任务队列(taskQueue)中
+ * 
+ * @param {number} currentTime - 当前调度器的时间戳
+ */
 function advanceTimers(currentTime) {
-  // Check for tasks that are no longer delayed and add them to the queue.
-  let timer = peek(timerQueue);
+  let timer = peek(timerQueue); // 从定时器队列获取队头任务 (不弹出)
+
+  // 遍历定时器队列(timerQueue), 检查到期的任务并将其添加到主任务队列(taskQueue)中
   while (timer !== null) {
+    // 情况1: 任务已执行, 将其从定时器队列中弹出 (回调为空)
     if (timer.callback === null) {
-      // Timer was cancelled.
       pop(timerQueue);
+    // 情况2: 任务已到期, 将任务从定时器队列转移到主任务队列 (定时器开始时间 <= 当前时间)
     } else if (timer.startTime <= currentTime) {
-      // Timer fired. Transfer to the task queue.
       pop(timerQueue);
-      timer.sortIndex = timer.expirationTime;
+      timer.sortIndex = timer.expirationTime; // 设置排序依据为过期时间
       push(taskQueue, timer);
-      if (enableProfiling) {
-        markTaskStart(timer, currentTime);
-        timer.isQueued = true;
+      if (enableProfiling) { // 性能分析
+        markTaskStart(timer, currentTime); // 标记任务开始时间
+        timer.isQueued = true; // 设置入队标志
       }
+    // 情况3: 定时器尚未到期, 终止遍历 (由于定时器队列是按开始时间排序的最小堆, 后续任务都未到期)
     } else {
-      // Remaining timers are pending.
       return;
     }
-    timer = peek(timerQueue);
+    timer = peek(timerQueue); // 获取队列中下一个任务
   }
 }
 
+/**
+ * 处理超时任务：当预设的延迟时间到达时，检查并处理定时器队列中的任务，
+ * 决定下一步是执行主任务队列还是重新设置延迟等待。
+ * 
+ * @param {number} currentTime - 当前调度器的时间戳（通常由 getCurrentTime() 生成）
+ */
 function handleTimeout(currentTime) {
+  // 1. 重置超时调度标志 (表示当前超时回调已触发, 允许设置新的超时回调)
   isHostTimeoutScheduled = false;
+  // 2. 推进定时器: 将定时器队列中所有已到期的任务转移到主任务队列
   advanceTimers(currentTime);
 
+  // 3. 检查是否已有主任务回调在调度中
   if (!isHostCallbackScheduled) {
     if (peek(taskQueue) !== null) {
-      isHostCallbackScheduled = true;
+      isHostCallbackScheduled = true; // 设置主任务调度标志
       requestHostCallback(flushWork);
     } else {
+      // 获取定时器队列中最早的任务
       const firstTimer = peek(timerQueue);
-      if (firstTimer !== null) {
+      // 设置新的超时回调 (递归等待)
+      if (firstTimer !== null) { 
+        // // 计算需要等待的时间 = 最早任务开始时间 - 当前时间
         requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
       }
     }
   }
 }
 
+/**
+ * 调度器执行任务的主入口
+ * 它会调用 `workLoop` 循环处理任务队列中的任务, 并在执行前后处理一些状态和性能分析相关的逻辑
+ * @param {*} hasTimeRemaining 
+ * @param {*} initialTime 
+ * @returns 
+ */
 function flushWork(hasTimeRemaining, initialTime) {
+  // 1. 性能分析: 标记调度器开始工作 (非挂起状态)
   if (enableProfiling) {
     markSchedulerUnsuspended(initialTime);
   }
 
   // We'll need a host callback the next time work is scheduled.
+  // 2. 重置调度状态: 取消不必要的超时回调
   isHostCallbackScheduled = false;
   if (isHostTimeoutScheduled) {
     // We scheduled a timeout but it's no longer needed. Cancel it.
@@ -157,6 +184,7 @@ function flushWork(hasTimeRemaining, initialTime) {
     cancelHostTimeout();
   }
 
+  // 3. 设置工作状态和保存当前优先级
   isPerformingWork = true;
   const previousPriorityLevel = currentPriorityLevel;
   try {
@@ -186,6 +214,12 @@ function flushWork(hasTimeRemaining, initialTime) {
   }
 }
 
+/**
+ * 
+ * @param {*} hasTimeRemaining 
+ * @param {*} initialTime 
+ * @returns 
+ */
 function workLoop(hasTimeRemaining, initialTime) {
   let currentTime = initialTime;
   advanceTimers(currentTime);
@@ -243,7 +277,29 @@ function workLoop(hasTimeRemaining, initialTime) {
   }
 }
 
+/**
+ * 在指定的调度优先级上下文中执行回调函数, 并自动恢复之前的优先级设置
+ * 
+ * @param {number} priorityLevel - 要设置的调度优先级，必须是以下值之一：
+ *   - ImmediatePriority (必须立即执行, 最高优先级)
+ *   - UserBlockingPriority (用户交互相关, 高优先级)
+ *   - NormalPriority (默认优先级)
+ *   - LowPriority (可延迟任务, 低优先级)
+ *   - IdlePriority (空闲时执行, 最低优先级)
+ * @param {function} eventHandler - 需要在该优先级下执行的函数
+ * @returns {*} - 返回 eventHandler 函数的执行结果
+ * 
+ * @example
+ * // 以用户阻塞优先级执行状态更新
+ * unstable_runWithPriority(UserBlockingPriority, () => {
+ *   setState({ clicked: true });
+ * });
+ * 
+ * @note 这是React调度系统的底层API，通常通过Scheduler包暴露的稳定API间接使用
+ * @see Scheduler.js 中的runWithPriority
+ */
 function unstable_runWithPriority(priorityLevel, eventHandler) {
+  // 1. 校验优先级级别, 无效时降级为 NormalPriority
   switch (priorityLevel) {
     case ImmediatePriority:
     case UserBlockingPriority:
@@ -255,12 +311,15 @@ function unstable_runWithPriority(priorityLevel, eventHandler) {
       priorityLevel = NormalPriority;
   }
 
+  // 2. 保存当前优先级, 并覆盖为新优先级
   var previousPriorityLevel = currentPriorityLevel;
   currentPriorityLevel = priorityLevel;
 
+  // 3. 在指定优先级上下文中执行回调
   try {
-    return eventHandler();
+    return eventHandler(); // 执行实际任务 (如渲染、副作用)
   } finally {
+    // 4. 无论成功或失败, 恢复之前的优先级
     currentPriorityLevel = previousPriorityLevel;
   }
 }
@@ -354,10 +413,12 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
     newTask.isQueued = false;
   }
 
+  // .1 延时任务, 延时执行
   if (startTime > currentTime) {
     // This is a delayed task.
     newTask.sortIndex = startTime;
     push(timerQueue, newTask);
+    // 如果当前没有超时任务, 则设置一个超时任务
     if (peek(taskQueue) === null && newTask === peek(timerQueue)) {
       // All tasks are delayed, and this is the task with the earliest delay.
       if (isHostTimeoutScheduled) {
@@ -369,6 +430,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
       // Schedule a timeout.
       requestHostTimeout(handleTimeout, startTime - currentTime);
     }
+  // .2 超时任务, 立即执行任务
   } else {
     newTask.sortIndex = expirationTime;
     push(taskQueue, newTask);
@@ -512,9 +574,13 @@ function forceFrameRate(fps) {
   }
 }
 
+/**
+ * 帧结束前执行任务
+ * React 调度器（Scheduler）模块 的核心逻辑之一，用于在浏览器环境中 分块执行任务 并确保主线程不被长时间阻塞（即实现时间切片 Time Slicing）
+ */
 const performWorkUntilDeadline = () => {
   if (scheduledHostCallback !== null) {
-    const currentTime = getCurrentTime();
+    const currentTime = getCurrentTime(); // 获取当前时间
     // Keep track of the start time so we can measure how long the main thread
     // has been blocked.
     startTime = currentTime;
@@ -528,13 +594,13 @@ const performWorkUntilDeadline = () => {
     // `hasMoreWork` will remain true, and we'll continue the work loop.
     let hasMoreWork = true;
     try {
+      // flushWork 执行任务
       hasMoreWork = scheduledHostCallback(hasTimeRemaining, currentTime);
     } finally {
-      if (hasMoreWork) {
-        // If there's more work, schedule the next message event at the end
-        // of the preceding one.
+      if (hasMoreWork) { // 判断是否还有剩余任务, 决定是否继续调度下一轮执行
+        // 如果还有工作，安排下一个宏任务 (如 MessageChannel、setTimeout)
         schedulePerformWorkUntilDeadline();
-      } else {
+      } else { // 无剩余工作, 重置调度状态
         isMessageLoopRunning = false;
         scheduledHostCallback = null;
       }
@@ -544,25 +610,20 @@ const performWorkUntilDeadline = () => {
   }
   // Yielding to the browser will give it a chance to paint, so we can
   // reset this.
-  needsPaint = false;
+  needsPaint = false; // 重置绘制标志, 允许浏览器渲染
 };
 
 let schedulePerformWorkUntilDeadline;
+/**
+ * 适用环境: Node.js 和 老版本IE
+ * 
+ * https://github.com/facebook/react/issues/20756
+ */
 if (typeof localSetImmediate === 'function') {
-  // Node.js and old IE.
-  // There's a few reasons for why we prefer setImmediate.
-  //
-  // Unlike MessageChannel, it doesn't prevent a Node.js process from exiting.
-  // (Even though this is a DOM fork of the Scheduler, you could get here
-  // with a mix of Node.js 15+, which has a MessageChannel, and jsdom.)
-  // https://github.com/facebook/react/issues/20756
-  //
-  // But also, it runs earlier which is the semantic we want.
-  // If other browsers ever implement it, it's better to use it.
-  // Although both of these would be inferior to native scheduling.
   schedulePerformWorkUntilDeadline = () => {
     localSetImmediate(performWorkUntilDeadline);
   };
+// 适用环境: 支持 MessageChannel 的浏览器和 Web Worker
 } else if (typeof MessageChannel !== 'undefined') {
   // DOM and Worker environments.
   // We prefer MessageChannel because of the 4ms setTimeout clamping.
@@ -572,6 +633,7 @@ if (typeof localSetImmediate === 'function') {
   schedulePerformWorkUntilDeadline = () => {
     port.postMessage(null);
   };
+// 不支持上述 API 的特殊环境 (如某些 Service Worker)
 } else {
   // We should only fallback here in non-browser environments.
   schedulePerformWorkUntilDeadline = () => {
@@ -579,11 +641,16 @@ if (typeof localSetImmediate === 'function') {
   };
 }
 
+/**
+ * 用于请求浏览器宿主环境执行一个异步任务回调
+ * 
+ * @param {*} callback 
+ */
 function requestHostCallback(callback) {
   scheduledHostCallback = callback;
-  if (!isMessageLoopRunning) {
-    isMessageLoopRunning = true;
-    schedulePerformWorkUntilDeadline();
+  if (!isMessageLoopRunning) { // 检查是否已有调度循环在进行
+    isMessageLoopRunning = true; // 标记循环为运行状态
+    schedulePerformWorkUntilDeadline(); // 安排宏任务执行
   }
 }
 

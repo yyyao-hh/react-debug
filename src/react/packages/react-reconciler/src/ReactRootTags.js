@@ -9,5 +9,6 @@
 
 export type RootTag = 0 | 1;
 
-export const LegacyRoot = 0;
-export const ConcurrentRoot = 1;
+// 定义两种根类型常量
+export const LegacyRoot = 0;     // 传统同步模式
+export const ConcurrentRoot = 1; // 并发模式

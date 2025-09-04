@@ -126,37 +126,31 @@ function warnIfStringRefCannotBeAutoConverted(config) {
 }
 
 /**
- * Factory method to create a new React element. This no longer adheres to
- * the class pattern, so do not use new to call it. Also, instanceof check
- * will not work. Instead test $$typeof field against Symbol.for('react.element') to check
- * if something is a React Element.
- *
- * @param {*} type
- * @param {*} props
- * @param {*} key
- * @param {string|object} ref
- * @param {*} owner
+ * 创建一个新的 React 元素
+ * @param {*} type - 组件类型 (函数/类组件或字符串如 'div')
+ * @param {*} props - 属性和子元素 (children 在 props 中)
+ * @param {*} key - 列表 diff 优化的标识
+ * @param {string|object} ref - 获取 DOM 或组件实例的引用
+ * @param {*} owner - 创建此元素的组件 (Fiber 节点)
  * @param {*} self A *temporary* helper to detect places where `this` is
  * different from the `owner` when React.createElement is called, so that we
  * can warn. We want to get rid of owner and replace string `ref`s with arrow
  * functions, and as long as `this` and owner are the same, there will be no
  * change in behavior.
- * @param {*} source An annotation object (added by a transpiler or otherwise)
- * indicating filename, line number, and/or other information.
+ * @param {*} source - 注释对象 (由转译器或其他方式添加) 指示文件名、行号或其他信息
  * @internal
  */
 const ReactElement = function(type, key, ref, self, source, owner, props) {
   const element = {
-    // This tag allows us to uniquely identify this as a React Element
+    // 唯一地将其标识为 React 元素
     $$typeof: REACT_ELEMENT_TYPE,
 
-    // Built-in properties that belong on the element
-    type: type,
-    key: key,
-    ref: ref,
-    props: props,
+    type: type,   // 组件类型 (函数/类组件或字符串如 'div')
+    key: key,     // 列表 diff 优化的标识
+    ref: ref,     // 获取 DOM 或组件实例的引用
+    props: props, // 属性和子元素 (children 在 props 中)
 
-    // Record the component responsible for creating this element.
+    // 创建此元素的组件 (Fiber 节点)
     _owner: owner,
   };
 
@@ -358,7 +352,7 @@ export function jsxDEV(type, config, maybeKey, source, self) {
 /**
  * 创建并返回一个新的 React 元素
  * 文档 https://zh-hans.react.dev/reference/react/createElement
- * @param {*} type - 元素的类型 (HTML 标签 / 组件函数 / 类)
+ * @param {*} type - 组件类型 (函数/类组件或字符串如 'div')
  * @param {object|null} config - 
  * @param {...*} children - 子元素
  * @returns {ReactElement}
@@ -366,7 +360,7 @@ export function jsxDEV(type, config, maybeKey, source, self) {
 export function createElement(type, config, children) {
   let propName;
 
-  const props = {}; // 空对象 (用于存储属性)
+  const props = {}; // 创建空对象存储属性
 
   // 初始化 key、ref、self、source 属性
   let key = null;
@@ -374,25 +368,25 @@ export function createElement(type, config, children) {
   let self = null;
   let source = null;
 
-  if (config != null) { // 如果 config 不为空
-    if (hasValidRef(config)) { // 如果 config 包含有效的 ref 属性
+  if (config != null) { // 如果 config 不为空, 检查
+    if (hasValidRef(config)) { // config 中包含有效的 ref 属性, 则赋值给 ref 变量
       ref = config.ref;
 
       if (__DEV__) { // 开发环境警告: 检查 ref 属性的合法性
         warnIfStringRefCannotBeAutoConverted(config);
       }
     }
-    if (hasValidKey(config)) { // 如果 config 包含有效的 key 属性
+    if (hasValidKey(config)) { // config 中包含有效的 key 属性, 则赋值给 key 变量
       if (__DEV__) { // 开发环境警告: 检查 key 的类型
         checkKeyStringCoercion(config.key);
       }
       key = '' + config.key; // 将 key 转换为字符串
     }
 
-    // 提取 self 和 source 属性 (babel 插件: babel-preset-react 注入的调试信息)
+    // config 中的 __self 和 __source 属性分别赋值给 self 和 source 变量 (babel 插件: babel-preset-react 注入的调试信息)
     self = config.__self === undefined ? null : config.__self;
     source = config.__source === undefined ? null : config.__source;
-    // 去除 key、ref、__self、__source 属性, 剩余的属性被添加到新的 props 对象中
+    // 去除 key、ref、__self、__source 属性, 剩余属性被添加到 props 对象中
     for (propName in config) {
       if (
         hasOwnProperty.call(config, propName) &&
@@ -405,10 +399,10 @@ export function createElement(type, config, children) {
 
   // 处理子元素
   const childrenLength = arguments.length - 2;
-  // 1. 只有一个子元素, 直接赋值给 props.children
+  // 1. 仅一个子元素, 直接赋值给 props.children
   if (childrenLength === 1) {
     props.children = children;
-  // 2. 有多个子元素, 将它们放到一个数组中赋值给 props.children
+  // 2. 有多个子元素, 放到一个数组中赋值给 props.children
   } else if (childrenLength > 1) {
     const childArray = Array(childrenLength);
     for (let i = 0; i < childrenLength; i++) {
@@ -446,13 +440,13 @@ export function createElement(type, config, children) {
     }
   }
   return ReactElement( // 返回一个新的 ReactElement 实例
-    type,                      // 元素的类型
-    key,                       // 元素的 key 属性
-    ref,                       // 元素的 ref 属性
-    self,                      // 元素的 __self 属性
-    source,                    // 元素的 __source 属性
+    type,
+    key,
+    ref,
+    self,
+    source,
     ReactCurrentOwner.current, // 当前的 React 当前拥有者 (用于调试)
-    props,                     // 元素的属性和子元素
+    props, // 元素的属性和子元素
   );
 }
 

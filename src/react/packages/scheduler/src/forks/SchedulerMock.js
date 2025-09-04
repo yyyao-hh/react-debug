@@ -86,6 +86,12 @@ function setDisableYieldValue(newValue) {
   disableYieldValue = newValue;
 }
 
+/**
+ * 用于处理延时任务
+ * 主要功能: 检查延时队列(timerQueue)中的任务是否到期, 并将到期任务转移到可执行的任务队列(taskQueue)中
+ * @param {*} currentTime 
+ * @returns 
+ */
 function advanceTimers(currentTime) {
   // Check for tasks that are no longer delayed and add them to the queue.
   let timer = peek(timerQueue);

@@ -3348,6 +3348,9 @@ function resetSuspendedCurrentOnMountInLegacyMode(current, workInProgress) {
   }
 }
 
+/**
+ * 节点复用逻辑
+ */
 function bailoutOnAlreadyFinishedWork(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -3683,18 +3686,20 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
 }
 
 /** 
- * current: 当前正在渲染的 Fiber 节点（即上一次渲染的 Fiber 节点）。如果当前是首次渲染，current 为 null
- * workInProgress: 正在处理的 Fiber 节点（即本次渲染的 Fiber 节点）
- * renderLanes: 表示当前渲染的优先级（Lanes 是 React 中用于表示优先位的位掩码）
+ * 处理 Fiber 节点的更新和渲染工作
+ * 
+ * @param {Fiber | null} current - 当前树中对应的 Fiber 节点 (如果是首次渲染, current 为 null)
+ * @param {Fiber} workInProgress - 正在处理的 Fiber 节点
+ * @param {Lanes} renderLanes - 本次渲染的优先级
  */
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
   renderLanes: Lanes,
 ): Fiber | null {
-  if (__DEV__) { // 开发环境下, 重新创建一个新的 Fiber 节点并返回, 通常用于调试或热重载
+  if (__DEV__) { // 开发环境特殊处理 (热重载)
     if (workInProgress._debugNeedsRemount && current !== null) {
-      // This will restart the begin phase with a new fiber.
+      // 当组件因热重载需要重新挂载时, 创建一个全新的 Fiber 节点替换现有节点
       return remountFiber(
         current,
         workInProgress,
@@ -3710,9 +3715,10 @@ function beginWork(
     }
   }
 
+  // 更新阶段 (非首次渲染)
   if (current !== null) { // 表示当前节点已经渲染过, 检查是否需要更新
-    const oldProps = current.memoizedProps;
-    const newProps = workInProgress.pendingProps;
+    const oldProps = current.memoizedProps;       // 当前树中对应的 Fiber 节点上一次渲染后的 props
+    const newProps = workInProgress.pendingProps; // 正在处理的 Fiber 节点的 props 
 
     if (
       oldProps !== newProps ||
@@ -3722,6 +3728,7 @@ function beginWork(
     ) {
       // If props or context changed, mark the fiber as having performed work.
       // This may be unset if the props are determined to be equal later (memo).
+      // 当前更新是否来源于父级的更新, 为 true 则来自父组件更新
       didReceiveUpdate = true;
     } else {
       // Neither props nor legacy context changes. Check if there's a pending
@@ -3756,6 +3763,7 @@ function beginWork(
         didReceiveUpdate = false;
       }
     }
+  // 挂载阶段 (首次渲染)
   } else {
     didReceiveUpdate = false;
 

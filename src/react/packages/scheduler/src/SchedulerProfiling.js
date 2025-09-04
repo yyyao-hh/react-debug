@@ -169,9 +169,19 @@ export function markSchedulerSuspended(ms: number) {
   }
 }
 
+/**
+ * 调度器(Scheduler)中用于性能分析(profiling)的工具函数
+ * 用于记录调度器从"挂起状态"进入"非挂起状态"的关键事件
+ * @param {*} ms - 当前时间戳
+ */
 export function markSchedulerUnsuspended(ms: number) {
-  if (enableProfiling) {
+  if (enableProfiling) { // 性能调试模式
     if (eventLog !== null) {
+      /**
+       * SchedulerResumeEvent - 事件类型 ID
+       * ms * 1000 - 当前时间戳
+       * mainThreadIdCounter - 主线程标识符计数器
+       */
       logEvent([SchedulerResumeEvent, ms * 1000, mainThreadIdCounter]);
     }
   }

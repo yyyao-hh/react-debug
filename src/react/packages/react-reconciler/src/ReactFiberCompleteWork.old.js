@@ -639,13 +639,18 @@ function cutOffTailIfNeeded(
   }
 }
 
+/**
+ * 冒泡属性 (completeWork - 归阶段执行的关键步骤)
+ * 
+ * @param {Fiber} completedWork - 一个刚刚完成所有子节点处理的 Fiber 节点
+ */
 function bubbleProperties(completedWork: Fiber) {
   const didBailout =
     completedWork.alternate !== null &&
     completedWork.alternate.child === completedWork.child;
 
-  let newChildLanes = NoLanes;
-  let subtreeFlags = NoFlags;
+  let newChildLanes = NoLanes; // 节点的子树中是否存在任何未完成的、有优先级的更新
+  let subtreeFlags = NoFlags;  // 节点的子树中具体有哪些类型的副作用
 
   if (!didBailout) {
     // Bubble up the earliest expiration time.

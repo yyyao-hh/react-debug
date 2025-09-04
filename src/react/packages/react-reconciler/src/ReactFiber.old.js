@@ -115,85 +115,86 @@ if (__DEV__) {
   }
 }
 
+/**
+ * 创建 Fiber节点 (虚拟DOM的底层实现)
+ * Fiber 是 React协调算法(Reconciliation)的核心数据结构, 负责追踪组件状态、副作用和渲染关系
+ * 
+ * @param {WorkTag} tag - Fiber节点类型标识 (函数组件/类组件/宿主组件等)
+ * @param {mixed} pendingProps - 新传入的待处理props
+ * @param {null|string} key - 组件的唯一标识key (用于列表diffing)
+ * @param {TypeOfMode} mode - 渲染模式标志 (同步/并发模式等)
+ */
 function FiberNode(
   tag: WorkTag,
   pendingProps: mixed,
   key: null | string,
   mode: TypeOfMode,
 ) {
-  // Instance
-  this.tag = tag;
-  this.key = key;
-  this.elementType = null;
-  this.type = null;
-  this.stateNode = null;
+  // ============ 实例的静态属性 ============
+  this.tag = tag;          // 节点类型 (0-24的枚举值, 如FunctionComponent=0, HostRoot=3)
+  this.key = key;          // 用于协调算法的唯一标识
+  this.elementType = null; // 原始元素类型 (函数/类本身)
+  this.type = null;        // 解析后的元素类型 (可能被babel处理过)
+  this.stateNode = null;   // 关联的真实实例 (DOM节点/类组件实例)
 
-  // Fiber 结构
+  // ============ Fiber链表结构 ============
   this.return = null;  // 指向父节点
   this.child = null;   // 指向第一个子节点
   this.sibling = null; // 指向兄弟节点
   this.index = 0;      // 在父节点的所有子节点中的索引
 
-  this.ref = null; // 保存 ref 属性对象
+  // ============ 引用 ============
+  this.ref = null;  // ref回调函数或 Ref对象
 
-  this.pendingProps = pendingProps; // 新的 props 对象
-  this.memoizedProps = null;        // 现有 props 对象
+  // ============ 属性 & 状态 ============
+  this.pendingProps = pendingProps; // 新传入的 props 对象
+  this.memoizedProps = null;        // 上次渲染时的 props 对象
   this.updateQueue = null;          // 保存更新对象的队列
-  this.memoizedState = null;        // 现有的 state 对象
-  this.dependencies = null;         // 依赖对象
+  this.memoizedState = null;        // 上次渲染时的 state 对象
+  this.dependencies = null;         // 依赖的 contexts/事件订阅
 
-  this.mode = mode;
+  // ============ 调度相关 ============
+  this.mode = mode; // 渲染模式对应的位掩码
 
-  // Effects
-  this.flags = NoFlags;        // effect 的 Flag，表明当前的 effect 是 `替换`/ `更新` / `删除` 等操作
-  this.subtreeFlags = NoFlags; // 子树的 Flag 合集
-  this.deletions = null;       // 需要删除的 fiber 节点
+  // ============ 副作用标记 ============
+  this.flags = NoFlags;        // 当前节点副作用标记 (插入/更新/删除等)
+  this.subtreeFlags = NoFlags; // 子树的 Flag合集
+  this.deletions = null;       // 需要删除的 fiber节点
 
-  // 更新渲染调度优先级相关 (定义: react/packages/react-reconciler/src/ReactFiberLane.old.js)
-  this.lanes = NoLanes;
-  this.childLanes = NoLanes;
+  // ============ 调度优先级 ============
+  this.lanes = NoLanes;      // 当前 Fiber节点的优先级
+  this.childLanes = NoLanes; // 子树中的优先级
+  
+  // ============ 双缓冲机制 ============
+  this.alternate = null; // 指向 workInProgress树中的镜像节点
 
-  // current 树和 workInprogress 树之间的相互引用
-  // current: 当前的 Fiber 树
-  // workInprogress: 正在更新的 Fiber 树
-  this.alternate = null;
-
+  // ============ 性能分析 ============
   if (enableProfilerTimer) {
-    // Note: The following is done to avoid a v8 performance cliff.
-    //
-    // Initializing the fields below to smis and later updating them with
-    // double values will cause Fibers to end up having separate shapes.
-    // This behavior/bug has something to do with Object.preventExtension().
-    // Fortunately this only impacts DEV builds.
-    // Unfortunately it makes React unusably slow for some applications.
-    // To work around this, initialize the fields below with doubles.
-    //
-    // Learn more about this here:
-    // https://github.com/facebook/react/issues/14365
-    // https://bugs.chromium.org/p/v8/issues/detail?id=8538
+    /**
+     * 规避v8性能问题的特殊初始化, 更多信息参考:
+     * https://github.com/facebook/react/issues/14365
+     * https://bugs.chromium.org/p/v8/issues/detail?id=8538
+     */
     this.actualDuration = Number.NaN;
     this.actualStartTime = Number.NaN;
     this.selfBaseDuration = Number.NaN;
     this.treeBaseDuration = Number.NaN;
 
-    // It's okay to replace the initial doubles with smis after initialization.
-    // This won't trigger the performance cliff mentioned above,
-    // and it simplifies other profiler code (including DevTools).
-    this.actualDuration = 0;
-    this.actualStartTime = -1;
-    this.selfBaseDuration = 0;
-    this.treeBaseDuration = 0;
+    this.actualDuration = 0;   // 本次渲染耗时 (毫秒)
+    this.actualStartTime = -1; // 渲染开始时间戳
+    this.selfBaseDuration = 0; // 当前节点自身渲染耗时
+    this.treeBaseDuration = 0; // 当前节点及子树渲染总耗时
   }
 
+  // ============ 开发环境调试 ============
   if (__DEV__) {
-    // This isn't directly used but is handy for debugging internals:
-
-    this._debugSource = null;
-    this._debugOwner = null;
-    this._debugNeedsRemount = false;
-    this._debugHookTypes = null;
+    // 这些属性方便调试内部组件
+    this._debugSource = null;         // 创建组件的源代码位置
+    this._debugOwner = null;          // 负责此Fiber的父组件
+    this._debugNeedsRemount = false;  // 热重载标记
+    this._debugHookTypes = null;      // 使用的Hook类型列表
     if (!hasBadMapPolyfill && typeof Object.preventExtensions === 'function') {
-      Object.preventExtensions(this);
+      Object.preventExtensions(this); // 锁定对象防止意外修改
     }
   }
 }
