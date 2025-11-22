@@ -134,28 +134,28 @@ function advanceTimers(currentTime) {
 }
 
 /**
- * 处理超时任务：当预设的延迟时间到达时，检查并处理定时器队列中的任务，
- * 决定下一步是执行主任务队列还是重新设置延迟等待。
+ * 用于处理延迟任务: 当预设的延迟时间到达时, 检查并处理定时器队列中的任务
  * 
- * @param {number} currentTime - 当前调度器的时间戳（通常由 getCurrentTime() 生成）
+ * @param {number} currentTime - 当前时间戳, 表示触发超时的确切时间
  */
 function handleTimeout(currentTime) {
-  // 1. 重置超时调度标志 (表示当前超时回调已触发, 允许设置新的超时回调)
+  // 重置超时调度标志 (表示当前超时回调已触发, 允许设置新的超时回调)
   isHostTimeoutScheduled = false;
-  // 2. 推进定时器: 将定时器队列中所有已到期的任务转移到主任务队列
+  // 检查定时器队列, 将到期的定时器任务移到主任务队列
   advanceTimers(currentTime);
 
-  // 3. 检查是否已有主任务回调在调度中
+  /* 检查是否已有主任务回调在调度中 */
   if (!isHostCallbackScheduled) {
+    // 主任务队列不为空, 触发任务执行循环
     if (peek(taskQueue) !== null) {
       isHostCallbackScheduled = true; // 设置主任务调度标志
       requestHostCallback(flushWork);
+    // 主任务队列为空, 安排新的超时回调
     } else {
       // 获取定时器队列中最早的任务
       const firstTimer = peek(timerQueue);
-      // 设置新的超时回调 (递归等待)
-      if (firstTimer !== null) { 
-        // // 计算需要等待的时间 = 最早任务开始时间 - 当前时间
+      // 设置新的超时回调
+      if (firstTimer !== null) {
         requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
       }
     }
