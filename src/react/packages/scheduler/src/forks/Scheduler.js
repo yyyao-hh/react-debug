@@ -104,12 +104,12 @@ const isInputPending =
 const continuousOptions = {includeContinuous: enableIsInputPendingContinuous};
 
 /**
- * 检查定时器队列(timerQueue)中已到期的任务, 并将其转移到主任务队列(taskQueue)中
+ * 检查定时器队列(timerQueue), 将到期的定时器任务移到主任务队列(taskQueue)
  * 
  * @param {number} currentTime - 当前调度器的时间戳
  */
 function advanceTimers(currentTime) {
-  let timer = peek(timerQueue); // 从定时器队列获取队头任务 (不弹出)
+  let timer = peek(timerQueue); // 从定时器队列中取出第一个任务 (但不移除)
 
   // 遍历定时器队列(timerQueue), 检查到期的任务并将其添加到主任务队列(taskQueue)中
   while (timer !== null) {
@@ -129,7 +129,7 @@ function advanceTimers(currentTime) {
     } else {
       return;
     }
-    timer = peek(timerQueue); // 获取队列中下一个任务
+    timer = peek(timerQueue); // 从定时器队列中取出第一个任务 (但不移除)
   }
 }
 
@@ -215,64 +215,94 @@ function flushWork(hasTimeRemaining, initialTime) {
 }
 
 /**
+ * 主要作用是循环处理任务队列中的任务, 并在适当的时机中断循环以让出主线程 (实现时间分片)
  * 
- * @param {*} hasTimeRemaining 
- * @param {*} initialTime 
- * @returns 
+ * @param {boolean} hasTimeRemaining - 表示是否有剩余时间
+ * @param {number} initialTime - 初始时间: 表示开始循环的时间点
+ * @returns {boolean} 返回是否还有额外的工作需要处理
  */
 function workLoop(hasTimeRemaining, initialTime) {
   let currentTime = initialTime;
+  // 检查定时器队列, 将到期的定时器任务移到主任务队列
   advanceTimers(currentTime);
+  // 从任务队列中取出第一个任务 (但不移除)
   currentTask = peek(taskQueue);
+  /* 主循环: 当有任务且调度器没有被调试工具暂停时继续执行 */
   while (
     currentTask !== null &&
     !(enableSchedulerDebugging && isSchedulerPaused)
   ) {
+    /**
+     * 检查是否需要中断当前循环
+     * 1. currentTask.expirationTime > currentTime: 任务还没有过期
+     * 2. !hasTimeRemaining: 且没有剩余时间
+     * 3. shouldYieldToHost(): 或应该交还控制权给浏览器 (如处理用户输入、重绘等)
+     */
     if (
       currentTask.expirationTime > currentTime &&
       (!hasTimeRemaining || shouldYieldToHost())
     ) {
-      // This currentTask hasn't expired, and we've reached the deadline.
       break;
     }
     const callback = currentTask.callback;
+    /* 如果回调是函数, 则执行它 */
     if (typeof callback === 'function') {
+      // 清空回调函数, 标记任务正在执行
       currentTask.callback = null;
+      // 设置当前优先级级别
       currentPriorityLevel = currentTask.priorityLevel;
       const didUserCallbackTimeout = currentTask.expirationTime <= currentTime;
+      // 开发环境性能分析: 标记任务开始运行
       if (enableProfiling) {
         markTaskRun(currentTask, currentTime);
       }
+      // 执行回调, 并获取返回值 (可能是一个连续的回调)
       const continuationCallback = callback(didUserCallbackTimeout);
-      currentTime = getCurrentTime();
+      currentTime = getCurrentTime(); // 更新当前时间
+      /* 如果回调返回了一个函数, 则表示任务还未完成, 将返回的函数作为新的回调挂载到当前任务上 */
       if (typeof continuationCallback === 'function') {
         currentTask.callback = continuationCallback;
+        // 开发环境性能分析: 记录任务让出
         if (enableProfiling) {
           markTaskYield(currentTask, currentTime);
         }
+      /* 如果回调没有返回函数, 则表示任务已完成 */
       } else {
+        // 开发环境性能分析: 标记任务正常完成
         if (enableProfiling) {
           markTaskCompleted(currentTask, currentTime);
-          currentTask.isQueued = false;
+          currentTask.isQueued = false; // 标记任务已不在任务队列中
         }
+        // 如果当前任务仍然是任务队列的第一个任务, 则将其弹出
         if (currentTask === peek(taskQueue)) {
           pop(taskQueue);
         }
       }
+      // 再次推进计时器, 检查是否有新任务到期
       advanceTimers(currentTime);
+    /* 如果回调不是函数, 则直接将该任务从队列中弹出 */
     } else {
       pop(taskQueue);
     }
+    /**
+     * 获取下一个任务
+     * 1. 任务执行返回续传函数(continuationCallback), 则获取到的仍然是同一个任务, 只不过回调函数变成了续传函数
+     * 2. 任务执行后未返函数, 则任务完成, 从任务队列中移除, 获取到的任务是真正的"下一个"任务
+     */
     currentTask = peek(taskQueue);
   }
-  // Return whether there's additional work
+  /* 返回是否还有额外的工作需要处理 */
   if (currentTask !== null) {
+    // 还有任务需要处理(可能是被中断的)
     return true;
   } else {
+    // 所有任务都处理完了, 检查定时器队列
     const firstTimer = peek(timerQueue);
     if (firstTimer !== null) {
+      // 设置一个定时器, 在第一个定时任务开始时间到达时处理
       requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
     }
+    // 没有更多工作了
     return false;
   }
 }
