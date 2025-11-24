@@ -444,69 +444,79 @@ export function getCurrentTime() {
   return now();
 }
 
+/**
+ * 为一个 Fiber 节点上的更新请求分配合适的 Lane (车道: 即优先级)
+ * 
+ * @param {Fiber} fiber - 需要更新的Fiber节点
+ * @returns {Lane} 返回更新优先级的位掩码
+ */
 export function requestUpdateLane(fiber: Fiber): Lane {
-  // Special cases
+  /**
+   * 获取当前渲染模式
+   *  - sync mode (同步模式)
+   *  - concurrent mode (并发模式)
+   */
   const mode = fiber.mode;
+  /**
+   * 1. 如果不是并发模式(即同步模式), 则直接返回同步车道(SyncLane), 优先级最高
+   */
   if ((mode & ConcurrentMode) === NoMode) {
     return (SyncLane: Lane);
+  /**
+   * 2. 并发模式下: 渲染阶段触发的更新特殊处理, 从当前正在渲染的车道中随机选择一个返回 (保持旧版本 React 的兼容行为)
+   * 
+   *  - deferRenderPhaseUpdateToNextBatch: 是否将渲染阶段产生的更新延迟到下一个更新中
+   *  - executionContext & RenderContext: 当前处于渲染阶段
+   *  - workInProgressRootRenderLanes !== NoLanes: 当前正在渲染中
+   */
   } else if (
     !deferRenderPhaseUpdateToNextBatch &&
     (executionContext & RenderContext) !== NoContext &&
     workInProgressRootRenderLanes !== NoLanes
   ) {
-    // This is a render phase update. These are not officially supported. The
-    // old behavior is to give this the same "thread" (lanes) as
-    // whatever is currently rendering. So if you call `setState` on a component
-    // that happens later in the same render, it will flush. Ideally, we want to
-    // remove the special case and treat them as if they came from an
-    // interleaved event. Regardless, this pattern is not officially supported.
-    // This behavior is only a fallback. The flag only exists until we can roll
-    // out the setState warning, since existing code might accidentally rely on
-    // the current behavior.
     return pickArbitraryLane(workInProgressRootRenderLanes);
   }
 
+  /**
+   * 3. 如果有过渡更新(Transition), 返回一个过渡车道 TransitionLane1～16
+   * 
+   *  - 过渡更新: 通过 startTransition 触发更新时, 会给 ReactCurrentBatchConfig.transition 全局变量赋值,
+   *    requestCurrentTransition 函数从 ReactCurrentBatchConfig.transition 上取值，以此判断是否为过渡更新
+   */
   const isTransition = requestCurrentTransition() !== NoTransition;
   if (isTransition) {
+    // 开发模式下, 将当前 Fiber 添加到过渡对象的 _updatedFibers 集合中 (用于开发时警告和调试)
     if (__DEV__ && ReactCurrentBatchConfig.transition !== null) {
       const transition = ReactCurrentBatchConfig.transition;
+      // 记录哪些 Fiber 被过渡更新影响
       if (!transition._updatedFibers) {
         transition._updatedFibers = new Set();
       }
 
       transition._updatedFibers.add(fiber);
     }
-    // The algorithm for assigning an update to a lane should be stable for all
-    // updates at the same priority within the same event. To do this, the
-    // inputs to the algorithm must be the same.
-    //
-    // The trick we use is to cache the first of each of these inputs within an
-    // event. Then reset the cached values once we can be sure the event is
-    // over. Our heuristic for that is whenever we enter a concurrent work loop.
+    // 从 TransitionLane1～16 依次向下取, TransitionLane16 之后, 下一个 transition 任务又从 TransitionLane1 开始, 循环往复
     if (currentEventTransitionLane === NoLane) {
-      // All transitions within the same event are assigned the same lane.
       currentEventTransitionLane = claimNextTransitionLane();
     }
     return currentEventTransitionLane;
   }
 
-  // Updates originating inside certain React methods, like flushSync, have
-  // their priority set by tracking it with a context variable.
-  //
-  // The opaque type returned by the host config is internally a lane, so we can
-  // use that directly.
-  // TODO: Move this type conversion to the event priority module.
+  /**
+   * 4. 处理 React 内部事件触发的更新 (如 flushSync), 返回不同事件类型对应的优先级 (离散事件、连续事件、默认事件、空闲事件)
+   * 
+   *  - getCurrentUpdatePriority: 获取 currentUpdatePriority 全局变量上设置的优先级的值
+   */
   const updateLane: Lane = (getCurrentUpdatePriority(): any);
   if (updateLane !== NoLane) {
     return updateLane;
   }
 
-  // This update originated outside React. Ask the host environment for an
-  // appropriate priority, based on the type of event.
-  //
-  // The opaque type returned by the host config is internally a lane, so we can
-  // use that directly.
-  // TODO: Move this type conversion to the event priority module.
+  /**
+   * 5. 处理外部事件触发的更新 (如 setTimeout 中触发的更新), 根据事件类型(点击、输入等)分配合适的优先级
+   * 
+   *  - getCurrentEventPriority: 获取 currentEventPriority 全局变量上设置的优先级的值
+   */
   const eventLane: Lane = (getCurrentEventPriority(): any);
   return eventLane;
 }
@@ -688,21 +698,29 @@ export function isUnsafeClassRenderPhaseUpdate(fiber: Fiber) {
 // of the existing task is the same as the priority of the next level that the
 // root has work on. This function is called on every update, and right before
 // exiting a task.
+/**
+ * 它负责确保一个 Fiber 根节点被调度, 也就是安排更新任务
+ * 
+ * @param {FiberRoot} root - 需要被调度的 Fiber 根节点
+ * @param {number} currentTime - 当前时间, 用于标记哪些lane已经过期 (starved)
+ * @returns 
+ */
 function ensureRootIsScheduled(root: FiberRoot, currentTime: number) {
+  debugger
   const existingCallbackNode = root.callbackNode;
 
   // Check if any lanes are being starved by other work. If so, mark them as
   // expired so we know to work on those next.
   markStarvedLanesAsExpired(root, currentTime);
 
-  // Determine the next lanes to work on, and their priority.
+  // 确定下一个要处理的 lanes 及其优先级 (这里考虑了当前是否已经有正在进行的工作)
   const nextLanes = getNextLanes(
     root,
     root === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes,
   );
 
   if (nextLanes === NoLanes) {
-    // Special case: There's nothing to work on.
+    // 特殊情况: 没有工作要做
     if (existingCallbackNode !== null) {
       cancelCallback(existingCallbackNode);
     }
@@ -762,6 +780,7 @@ function ensureRootIsScheduled(root: FiberRoot, currentTime: number) {
     } else {
       scheduleSyncCallback(performSyncWorkOnRoot.bind(null, root));
     }
+    /* 如果支持微任务, 则在微任务中刷新队列 */
     if (supportsMicrotasks) {
       // Flush the queue in a microtask.
       if (__DEV__ && ReactCurrentActQueue.current !== null) {
@@ -790,31 +809,34 @@ function ensureRootIsScheduled(root: FiberRoot, currentTime: number) {
       scheduleCallback(ImmediateSchedulerPriority, flushSyncCallbacks);
     }
     newCallbackNode = null;
+  /* 对于非同步任务, 我们需要将 lanes 转换为 Scheduler 的优先级 */
   } else {
     let schedulerPriorityLevel;
     switch (lanesToEventPriority(nextLanes)) {
-      case DiscreteEventPriority:
+      case DiscreteEventPriority:   // 离散事件 (点击、输入)
         schedulerPriorityLevel = ImmediateSchedulerPriority;
         break;
-      case ContinuousEventPriority:
+      case ContinuousEventPriority: // 连续事件 (鼠标移动)
         schedulerPriorityLevel = UserBlockingSchedulerPriority;
         break;
-      case DefaultEventPriority:
+      case DefaultEventPriority:    // 默认更新
         schedulerPriorityLevel = NormalSchedulerPriority;
         break;
-      case IdleEventPriority:
+      case IdleEventPriority:       // 空闲任务
         schedulerPriorityLevel = IdleSchedulerPriority;
         break;
-      default:
+      default:                      // 默认更新
         schedulerPriorityLevel = NormalSchedulerPriority;
         break;
     }
+    // 通过 Scheduler 调度并发任务
     newCallbackNode = scheduleCallback(
       schedulerPriorityLevel,
       performConcurrentWorkOnRoot.bind(null, root),
     );
   }
 
+  // 更新 root 上的回调优先级和回调节点
   root.callbackPriority = newCallbackPriority;
   root.callbackNode = newCallbackNode;
 }
@@ -2383,23 +2405,29 @@ function releaseRootPooledCache(root: FiberRoot, remainingLanes: Lanes) {
   }
 }
 
+/**
+ * 检查是否存在待执行的被动效应(useEffect 产生的副作用), 如果存在则执行它们
+ * 
+ * @returns {boolean} - 表示本次调用是否真的执行了被动效应
+ */
 export function flushPassiveEffects(): boolean {
-  // Returns whether passive effects were flushed.
-  // TODO: Combine this check with the one in flushPassiveEFfectsImpl. We should
-  // probably just combine the two functions. I believe they were only separate
-  // in the first place because we used to wrap it with
-  // `Scheduler.runWithPriority`, which accepts a function. But now we track the
-  // priority within React itself, so we can mutate the variable directly.
+  /**
+   * rootWithPendingPassiveEffects 是一个全局变量, 在 commitRootImpl 函数中被设置,
+   * 如果它不为 null, 就意味着有某个 Fiber Root 存在等待执行的被动效应
+   */
   if (rootWithPendingPassiveEffects !== null) {
-    // Cache the root since rootWithPendingPassiveEffects is cleared in
-    // flushPassiveEffectsImpl
+    /**
+     * 因为 flushPassiveEffects 可能被从多个地方调用, 所以先将关键的全局变量缓存到局部变量中, 然后重置全局变量
+     * - root: 缓存对这个根节点的引用, 因为 flushPassiveEffectsImpl 函数内部会重置
+     * - remainingLanes: 缓存剩余的优先级车道(lanes), 是产生当前待处理效应的更新所对应的原始优先级
+     */
     const root = rootWithPendingPassiveEffects;
-    // Cache and clear the remaining lanes flag; it must be reset since this
-    // method can be called from various places, not always from commitRoot
-    // where the remaining lanes are known
     const remainingLanes = pendingPassiveEffectsRemainingLanes;
     pendingPassiveEffectsRemainingLanes = NoLanes;
 
+    /**
+     * 优先级处理
+     */
     const renderPriority = lanesToEventPriority(pendingPassiveEffectsLanes);
     const priority = lowerEventPriority(DefaultEventPriority, renderPriority);
     const prevTransition = ReactCurrentBatchConfig.transition;
@@ -2408,7 +2436,7 @@ export function flushPassiveEffects(): boolean {
     try {
       ReactCurrentBatchConfig.transition = null;
       setCurrentUpdatePriority(priority);
-      return flushPassiveEffectsImpl();
+      return flushPassiveEffectsImpl(); // 遍历整个 Fiber 树, 找到所有带有 Passive 和 HookHasEffect 标志的 Effect 对象,并依次执行它们的销毁函数和创建函数
     } finally {
       setCurrentUpdatePriority(previousPriority);
       ReactCurrentBatchConfig.transition = prevTransition;
@@ -2435,12 +2463,15 @@ export function enqueuePendingPassiveProfilerEffect(fiber: Fiber): void {
   }
 }
 
+/**
+ * 
+ */
 function flushPassiveEffectsImpl() {
   if (rootWithPendingPassiveEffects === null) {
     return false;
   }
 
-  // Cache and clear the transitions flag
+  // 缓存并清空过渡(Transition)相关状态
   const transitions = pendingPassiveTransitions;
   pendingPassiveTransitions = null;
 
@@ -2472,6 +2503,12 @@ function flushPassiveEffectsImpl() {
   const prevExecutionContext = executionContext;
   executionContext |= CommitContext;
 
+  /**
+   * 执行所有清理函数, 然后执行所有设置函数
+   * 
+   * commitPassiveUnmountEffects: 遍历整个 Fiber树, 找到所有需要被销毁的 effect, 并执行其 destroy函数
+   * commitPassiveMountEffects: 再遍历整个 Fiber树, 找到所有需要被执行的 effect, 并执行其  create函数
+   */
   commitPassiveUnmountEffects(root.current);
   commitPassiveMountEffects(root, root.current, lanes, transitions);
 
